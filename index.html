@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⛈ 基隆北海岸雨量監測</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;background:#f0f3f8;color:#1a2030;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* 工具列 */
+.toolbar{background:#fff;border-bottom:1px solid #dde3ec;padding:0 14px;display:flex;align-items:center;gap:9px;flex-shrink:0;height:46px;overflow-x:auto;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.toolbar::-webkit-scrollbar{height:3px}
+.toolbar::-webkit-scrollbar-thumb{background:#ccd3df;border-radius:2px}
+.toolbar-title{font-size:13px;font-weight:700;color:#1a4a8a;white-space:nowrap}
+.sep{width:1px;height:20px;background:#dde3ec;flex-shrink:0}
+.ctrl-group{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.ctrl-lbl{font-size:11px;color:#6a7a99;white-space:nowrap}
+select,.btn{height:28px;padding:0 8px;border:1px solid #d0d8e8;border-radius:5px;background:#fff;color:#1a2030;font-family:inherit;font-size:12px;cursor:pointer;outline:none;transition:border-color .15s,box-shadow .15s}
+select:hover,.btn:hover{border-color:#4a7acc;box-shadow:0 0 0 2px rgba(74,122,204,.1)}
+.btn.primary{background:#1a4a8a;border-color:#1a4a8a;color:#fff;font-weight:700;padding:0 12px}
+.btn.primary:hover{background:#1e56a0;box-shadow:0 2px 8px rgba(26,74,138,.3)}
+.btn.refresh{background:#f0f8ee;border-color:#5aaa44;color:#2a7a1a;font-weight:600;padding:0 12px}
+.btn.refresh:hover{background:#e4f5e0;border-color:#3a9a2a}
+.btn.refresh.loading{opacity:.6;pointer-events:none}
+.file-btn{height:28px;padding:0 9px;border:1px dashed #b0bcd4;border-radius:5px;background:#f8faff;color:#4a6aaa;font-family:inherit;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:.15s;white-space:nowrap}
+.file-btn:hover{border-color:#4a7acc;background:#eef3ff;color:#1a4a8a}
+#file-input,#geojson-input,#obs-input{display:none}
+.file-tag{font-size:10px;color:#7a8faa;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slider-wrap{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.slider-wrap input[type=range]{width:80px;height:4px;cursor:pointer;accent-color:#1a4a8a}
+.slider-val{font-size:11px;color:#1a4a8a;font-weight:700;width:30px;text-align:right}
+
+/* 設定下拉 */
+/* 設定下拉 */
+.settings-wrap{position:relative;flex-shrink:0}
+.btn.settings{padding:0 10px;gap:4px;display:inline-flex;align-items:center}
+.settings-dropdown{
+  display:none;position:fixed;
+  background:#fff;border:1px solid #c8d8f0;border-radius:8px;
+  box-shadow:0 6px 24px rgba(26,74,138,.2);
+  padding:8px 0;z-index:9999;min-width:240px;
+}
+.settings-dropdown.open{display:block;}
+.sd-item{padding:8px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:background .12s}
+.sd-item:hover{background:#f0f5ff}
+.sd-label{font-size:11px;color:#3a5a8a;font-weight:600;white-space:nowrap;flex:1}
+.sd-file-tag{font-size:10px;color:#8a9ab8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-sep{height:1px;background:#eef0f8;margin:4px 0}
+
+/* 作者版權 */
+.author-credit{
+  position:absolute;bottom:26px;right:8px;z-index:800;
+  font-size:10px;color:rgba(30,40,70,.65);
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(180,200,230,.5);
+  border-radius:5px;padding:3px 8px;
+  pointer-events:none;white-space:nowrap;
+  backdrop-filter:blur(2px);
+}
+
+/* Leaflet 底圖切換面板微調 */
+.leaflet-control-layers{border:1px solid #c8d8f0!important;border-radius:8px!important;box-shadow:0 4px 16px rgba(26,74,138,.15)!important;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif!important;font-size:12px!important}
+.leaflet-control-layers-expanded{padding:8px 12px!important}
+.leaflet-control-layers label{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer}
+.leaflet-control-layers-selector{margin:0!important}
+
+/* 主體 */
+.main{display:flex;flex:1;overflow:hidden}
+.map-wrap{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+
+/* 時段浮框 */
+.map-time-info{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(255,255,255,.96);border:1px solid #c0d0e8;border-radius:8px;padding:5px 14px;box-shadow:0 2px 12px rgba(0,0,0,.1);display:none;align-items:center;gap:8px;font-size:12px;pointer-events:none;white-space:nowrap}
+.mti-period{font-weight:700;color:#1a4a8a;font-size:13px}
+.mti-sep{color:#c0cfe8}
+.mti-range{color:#3a5078}
+.mti-obs{color:#8aa0c0;font-size:11px}
+
+/* 直式色標 */
+.sb-legend{width:68px;flex-shrink:0;background:#fff;border-left:1px solid #dde3ec;border-right:1px solid #dde3ec;display:flex;flex-direction:column;overflow:hidden;padding:8px 5px}
+.sb-legend-title{font-size:9px;font-weight:700;color:#7a90b0;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;text-align:center}
+.legend-bar-col{flex:1;display:flex;flex-direction:column;gap:1px;overflow:hidden}
+.leg-row{display:flex;align-items:center;gap:3px;flex:1;min-height:0}
+.leg-swatch{width:16px;flex-shrink:0;align-self:stretch;border-radius:2px;border:1px solid rgba(0,0,0,.07);min-height:6px}
+.leg-lbl{font-size:9px;color:#4a5a78;white-space:nowrap;line-height:1}
+
+/* 右側排名 */
+.sb-rank{width:215px;flex-shrink:0;background:#fff;border-left:1px solid #dde3ec;display:flex;flex-direction:column;overflow:hidden}
+.sb-rank-header{padding:8px 10px 6px;font-size:10px;font-weight:700;color:#7a90b0;letter-spacing:1.5px;text-transform:uppercase;flex-shrink:0;border-bottom:1px solid #f0f3f8}
+.rank-scroll{flex:1;overflow-y:auto;padding:5px 8px}
+.rank-scroll::-webkit-scrollbar{width:4px}
+.rank-scroll::-webkit-scrollbar-thumb{background:#d0d8e8;border-radius:2px}
+.rank-item{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:5px;margin-bottom:3px;background:#f5f8ff;border:1px solid #e4eaf5;transition:background .12s}
+.rank-item:hover{background:#e8f0ff}
+.rank-badge{width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0}
+.r1{background:#f5a623;color:#fff}.r2{background:#9b9b9b;color:#fff}.r3{background:#c87533;color:#fff}
+.r4,.r5,.r6,.r7,.r8,.r9,.r10{background:#dde3ec;color:#4a5a78}
+.rank-body{flex:1;min-width:0}
+.rank-loc{font-size:9px;color:#8a9ab8;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank-name{font-size:11px;font-weight:700;color:#1a2a4a}
+.rank-val{font-size:13px;font-weight:700;color:#1a6acc;white-space:nowrap}
+.rank-unit{font-size:9px;color:#8a9ab8}
+.rank-empty{font-size:11px;color:#aabbcc;padding:8px 0;text-align:center}
+.obs-footer{flex-shrink:0;padding:6px 10px;font-size:10px;color:#8a9ab8;line-height:1.7;border-top:1px solid #f0f3f8}
+
+/* 狀態列 */
+.statusbar{background:#fff;border-top:1px solid #dde3ec;padding:3px 12px;font-size:10px;color:#7a8faa;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Leaflet */
+.leaflet-tooltip{background:#fff!important;border:1px solid #c0d0e8!important;color:#1a2030!important;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif!important;font-size:12px!important;border-radius:6px!important;box-shadow:0 2px 10px rgba(0,0,0,.12)!important;padding:6px 10px!important}
+.leaflet-tooltip::before{display:none!important}
+.tt-name{font-weight:700;color:#1a4a8a;margin-bottom:1px;font-size:13px}
+.tt-loc{font-size:10px;color:#7a90b0;margin-bottom:3px}
+.tt-val{color:#1a8a3a;font-size:14px;font-weight:700}
+.tt-info{color:#8a9ab8;font-size:10px;margin-top:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+
+/* ══ 氣象資訊面板 ══ */
+@keyframes panelSlideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.wx-panel{
+  position:absolute;bottom:36px;left:12px;z-index:900;
+  background:rgba(255,255,255,.97);
+  border:1px solid #c8d8f0;border-radius:12px;
+  box-shadow:0 4px 24px rgba(26,74,138,.15);
+  width:275px;overflow:hidden;
+  animation:panelSlideIn .2s ease;
+  display:none;
+}
+.wx-panel.visible{display:block;}
+.wx-panel-head{
+  background:linear-gradient(135deg,#1a4a8a 0%,#1e6acc 100%);
+  padding:10px 13px 9px;
+  display:flex;align-items:flex-start;justify-content:space-between;
+}
+.wx-head-left{flex:1;min-width:0}
+.wx-station-name{font-size:15px;font-weight:700;color:#fff;line-height:1.2;display:flex;align-items:baseline;gap:6px}
+.wx-station-id{font-size:10px;font-weight:400;color:rgba(255,255,255,.6)}
+.wx-station-loc{font-size:10px;color:rgba(255,255,255,.75);margin-top:2px}
+.wx-station-alt{font-size:10px;color:rgba(255,255,255,.55);margin-top:1px}
+.wx-panel-close{
+  background:rgba(255,255,255,.2);border:none;color:#fff;
+  width:22px;height:22px;border-radius:50%;cursor:pointer;
+  font-size:13px;line-height:22px;text-align:center;
+  flex-shrink:0;margin-left:8px;margin-top:1px;
+  transition:background .15s;
+}
+.wx-panel-close:hover{background:rgba(255,255,255,.35)}
+.wx-weather-badge{
+  padding:5px 13px 6px;
+  background:#f0f5ff;border-bottom:1px solid #e4eaf8;
+  font-size:12px;color:#3a5a9a;font-weight:600;
+  display:flex;align-items:center;gap:5px;
+}
+.wx-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#e8eef8;padding:0}
+.wx-cell{
+  background:#fff;padding:9px 12px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.wx-cell-label{font-size:9px;color:#8a9ab8;letter-spacing:.8px;text-transform:uppercase;font-weight:600}
+.wx-cell-val{font-size:18px;font-weight:700;color:#1a2a4a;line-height:1}
+.wx-cell-unit{font-size:10px;color:#8a9ab8;font-weight:400}
+.wx-cell.highlight .wx-cell-val{color:#1a6acc}
+.wx-cell.warm .wx-cell-val{color:#cc4400}
+.wx-wind-arrow{display:inline-block;font-size:16px;margin-right:3px}
+.wx-panel-foot{
+  padding:7px 12px;background:#f8faff;
+  border-top:1px solid #e8eef8;
+  font-size:10px;color:#8a9ab8;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.wx-daily{display:flex;gap:10px}
+.wx-daily-item{font-size:10px;color:#5a7aaa}
+.wx-daily-item span{font-weight:700;color:#1a2a4a}
+.wx-no-data{padding:16px 13px;font-size:12px;color:#aab0c0;text-align:center}
+.wx-rain-row{
+  padding:6px 12px;background:#eef5ff;border-top:1px solid #e0eaf8;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;color:#3a5a9a;
+}
+.wx-rain-val{font-size:14px;font-weight:700;color:#1a6acc}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-title">⛈ 基隆北海岸雨量監測</div>
+  <div class="sep"></div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">時段</span>
+    <select id="period-sel">
+      <option value="Now" selected>當日累積</option>
+      <option value="Past10Min">過去 10 分鐘</option>
+      <option value="Past1hr">過去 1 小時</option>
+      <option value="Past3hr">過去 3 小時</option>
+      <option value="Past6Hr">過去 6 小時</option>
+      <option value="Past12hr">過去 12 小時</option>
+      <option value="Past24hr">過去 24 小時</option>
+      <option value="Past2days">過去 2 天</option>
+      <option value="Past3days">過去 3 天</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">插值</span>
+    <select id="interp-sel">
+      <option value="idw2">IDW p=2</option>
+      <option value="idw3" selected>IDW p=3</option>
+      <option value="nearest">最近鄰</option>
+    </select>
+  </div>
+  <div class="slider-wrap">
+    <span class="ctrl-lbl">透明度</span>
+    <input type="range" id="opacity-slider" min="0" max="100" value="75" oninput="updateOpacity(this.value)">
+    <span class="slider-val" id="opacity-val">75%</span>
+  </div>
+  <button class="btn primary" onclick="renderMap()" style="padding:0 18px;font-size:13px;min-width:80px">▶ 繪製</button>
+  <button class="btn refresh" id="refresh-btn" onclick="refreshData()" style="padding:0 18px;font-size:13px;min-width:96px">⟳ 更新資料</button>
+  <div class="sep"></div>
+  <!-- 設定📂 下拉 -->
+  <div class="settings-wrap" id="settings-wrap">
+    <button class="btn settings" id="settings-btn" onclick="toggleSettings(event)">📂 設定 ▾</button>
+    <div class="settings-dropdown" id="settings-dropdown">
+      <label class="sd-item" for="file-input">
+        <span>🌧</span>
+        <span class="sd-label">雨量資料 JSON</span>
+        <span class="sd-file-tag" id="file-name">自動載入中…</span>
+      </label>
+      <input type="file" id="file-input" accept=".json">
+      <label class="sd-item" for="obs-input">
+        <span>🌡</span>
+        <span class="sd-label">氣象觀測 JSON</span>
+        <span class="sd-file-tag" id="obs-name">自動載入中…</span>
+      </label>
+      <input type="file" id="obs-input" accept=".json">
+      <div class="sd-sep"></div>
+      <label class="sd-item" for="geojson-input">
+        <span>🗺</span>
+        <span class="sd-label">行政區界 GeoJSON</span>
+        <span class="sd-file-tag" id="geojson-name">自動載入中…</span>
+      </label>
+      <input type="file" id="geojson-input" accept=".geojson,.json">
+    </div>
+  </div>
+
+</div>
+
+<div class="main">
+  <!-- 地圖 -->
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <!-- 氣象資訊面板 -->
+    <div class="wx-panel" id="wx-panel">
+      <div class="wx-panel-head">
+        <div class="wx-head-left">
+          <div class="wx-station-name">
+            <span id="wx-name">—</span>
+            <span class="wx-station-id" id="wx-id"></span>
+          </div>
+          <div class="wx-station-loc" id="wx-loc">—</div>
+          <div class="wx-station-alt" id="wx-alt"></div>
+        </div>
+        <button class="wx-panel-close" onclick="closeWxPanel()">✕</button>
+      </div>
+      <div id="wx-body">
+        <div class="wx-no-data">載入氣象資料後可顯示</div>
+      </div>
+    </div>
+
+    <div class="map-time-info" id="map-time-info">
+      <span class="mti-period" id="mti-period">—</span>
+      <span class="mti-sep">|</span>
+      <span class="mti-range" id="mti-range">—</span>
+      <span class="mti-sep">|</span>
+      <span class="mti-obs" id="mti-obs">觀測時間：—</span>
+    </div>
+
+    <!-- 作者版權 -->
+    <div class="author-credit">中央氣象署基隆氣象站　鄧乃誠 製作</div>
+  </div>
+
+  <!-- 直式色標（地圖右邊，排名左邊） -->
+  <div class="sb-legend">
+    <div class="sb-legend-title">mm</div>
+    <div class="legend-bar-col" id="legend-wrap"></div>
+  </div>
+
+  <!-- 前10名排名 -->
+  <div class="sb-rank">
+    <div class="sb-rank-header">前 10 名（基隆北海岸）</div>
+    <div class="rank-scroll" id="rank-list">
+      <div class="rank-empty">載入資料後顯示</div>
+    </div>
+    <div class="obs-footer" id="obs-footer">觀測時間：—<br>有效站數：—</div>
+  </div>
+</div>
+
+<div class="statusbar" id="status">初始化中，自動載入資料…</div>
+
+<script>
+/* ══ 固定繪圖範圍（大台北） ══ */
+const MAP_BOUNDS={minLat:24.85,maxLat:25.45,minLon:121.30,maxLon:122.15};
+
+/* ══ 排名白名單 ══ */
+const RANK_WHITELIST=new Set([
+  '基隆','淡水','七堵','大武崙','野柳','淡水觀海','石門','水湳洞','八斗子',
+  '六塊厝','田寮','大坪','基隆嶼','白沙灣',
+  '三貂角','鼻頭角','澳底','泰平','雙溪','汐止','暖暖','富貴角','福隆','彭佳嶼',
+  '金山','三和','瑞芳','五分山',
+  '吉林國小','大粗坑','員山子','萬里國小','太平','三貂嶺','上林國小','柑林國小','火燒寮',
+  '國三N002K', '國三S004K', '國三S007K', '國一S001K' , '國一S006K'
+]);
+
+/* ══ 色階 ══ */
+const SCALE=[
+  {hi:1,   color:'#c8eeff',label:'< 1'},
+  {hi:2,   color:'#a0d8f8',label:'1–2'},
+  {hi:6,   color:'#5abcf0',label:'2–6'},
+  {hi:10,  color:'#00aaee',label:'6–10'},
+  {hi:15,  color:'#0066cc',label:'10–15'},
+  {hi:20,  color:'#00aa44',label:'15–20'},
+  {hi:30,  color:'#55cc00',label:'20–30'},
+  {hi:40,  color:'#ddee00',label:'30–40'},
+  {hi:50,  color:'#ffcc00',label:'40–50'},
+  {hi:70,  color:'#ff8800',label:'50–70'},
+  {hi:90,  color:'#ff4400',label:'70–90'},
+  {hi:110, color:'#cc0000',label:'90–110'},
+  {hi:130, color:'#880022',label:'110–130'},
+  {hi:150, color:'#660088',label:'130–150'},
+  {hi:200, color:'#aa00cc',label:'150–200'},
+  {hi:300, color:'#ee44ee',label:'200–300'},
+  {hi:Infinity,color:'#ffaaff',label:'> 300'},
+];
+function getColor(v){for(const s of SCALE)if(v<s.hi)return s.color;return'#ffaaff'}
+function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
+
+function buildLegend(){
+  const w=document.getElementById('legend-wrap');w.innerHTML='';
+  [...SCALE].reverse().forEach(s=>{
+    const d=document.createElement('div');d.className='leg-row';
+    d.innerHTML=`<div class="leg-swatch" style="background:${s.color}"></div><span class="leg-lbl">${s.label}</span>`;
+    w.appendChild(d);
+  });
+}
+
+/* ══ 時段資訊 ══ */
+const PERIOD_INFO={
+  Now:      {label:'當日累積',    duration:0},
+  Past10Min:{label:'過去 10 分鐘',duration:10},
+  Past1hr:  {label:'過去 1 小時', duration:60},
+  Past3hr:  {label:'過去 3 小時', duration:180},
+  Past6Hr:  {label:'過去 6 小時', duration:360},
+  Past12hr: {label:'過去 12 小時',duration:720},
+  Past24hr: {label:'過去 24 小時',duration:1440},
+  Past2days:{label:'過去 2 天',   duration:2880},
+  Past3days:{label:'過去 3 天',   duration:4320},
+};
+function calcTimeRange(obsTime,period){
+  if(!obsTime||obsTime==='—')return'—';
+  const info=PERIOD_INFO[period];
+  try{
+    const endDt=new Date(obsTime.replace(' ','T')+'+08:00');
+    const fmt=dt=>`${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    if(info.duration===0)return fmt(endDt);
+    return`${fmt(new Date(endDt-info.duration*60000))} ～ ${fmt(endDt)}`;
+  }catch(e){return'—';}
+}
+
+/* ══ Leaflet ══ */
+const map=L.map('map',{zoomControl:true}).setView([25.12,121.72],10);
+
+const basemaps={
+  '🗺 標準地圖': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org">OpenStreetMap</a>',maxZoom:18}),
+  '⬛ 深色底圖': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© <a href="https://carto.com">CARTO</a>',maxZoom:19}),
+  '🏔 地形圖': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a>',maxZoom:17}),
+  '🌫 淡色底圖': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© <a href="https://carto.com">CARTO</a>',maxZoom:19}),
+  '🛰 衛星影像': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    attribution:'© <a href="https://www.esri.com">Esri</a>',maxZoom:19}),
+};
+basemaps['🗺 標準地圖'].addTo(map);
+L.control.layers(basemaps,{},{position:'topright',collapsed:false}).addTo(map);
+
+let overlayLyr=null,stationLyr=null,adminLyr=null,currentOpacity=0.75;
+let landGeoJSON=null; // 陸地遮罩用
+
+function updateOpacity(val){
+  currentOpacity=val/100;
+  document.getElementById('opacity-val').textContent=val+'%';
+  if(overlayLyr)overlayLyr.setOpacity(currentOpacity);
+}
+
+/* ══ 插值 ══ */
+function idw(pts,lat,lon,p){
+  let n=0,d=0;
+  for(const s of pts){const dx=lon-s.lon,dy=lat-s.lat,d2=dx*dx+dy*dy;if(d2<1e-14)return s.v;const w=1/Math.pow(d2,p/2);n+=w*s.v;d+=w;}
+  return d?n/d:0;
+}
+function nearest(pts,lat,lon){
+  let best=pts[0],bd=Infinity;
+  for(const s of pts){const d=(lon-s.lon)**2+(lat-s.lat)**2;if(d<bd){bd=d;best=s;}}
+  return best.v;
+}
+
+/* ══ 排名 ══ */
+const BADGE=['r1','r2','r3','r4','r5','r6','r7','r8','r9','r10'];
+function updateRanking(pts){
+  const sorted=[...pts].filter(s=>RANK_WHITELIST.has(s.name)).sort((a,b)=>b.v-a.v).slice(0,10);
+  const wrap=document.getElementById('rank-list');
+  if(!sorted.length){wrap.innerHTML='<div class="rank-empty">無白名單站資料</div>';return;}
+  wrap.innerHTML='';
+  sorted.forEach((s,i)=>{
+    const loc=[s.county,s.town].filter(Boolean).join(' ');
+    const el=document.createElement('div');el.className='rank-item';
+    el.innerHTML=`
+      <div class="rank-badge ${BADGE[i]}">${i+1}</div>
+      <div class="rank-body">
+        <div class="rank-loc" title="${loc}">${loc||'—'}</div>
+        <div class="rank-name">${s.name}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <span class="rank-val">${s.v.toFixed(1)}</span><span class="rank-unit"> mm</span>
+      </div>`;
+    wrap.appendChild(el);
+  });
+}
+
+/* ══ 資料 ══ */
+let stationData=[],obsTimeStr='—';
+let obsData={};   // StationName → WeatherElement+meta
+
+function parseObsJSON(json){
+  const stations=json?.records?.Station||json?.result?.records?.Station||json?.Station||null;
+  if(!stations||!stations.length)return false;
+  obsData={};
+  stations.forEach(s=>{
+    const we=s.WeatherElement||{};
+    const geo=s.GeoInfo||{};
+    const alt=parseFloat(geo.StationAltitude);
+    obsData[s.StationName]={
+      id:s.StationId,
+      county:geo.CountyName||'',town:geo.TownName||'',
+      alt:isNaN(alt)?null:alt,
+      time:(s.ObsTime?.DateTime||'').replace('T',' ').replace('+08:00',''),
+      weather:we.Weather||'',
+      windDir:parseFloat(we.WindDirection),
+      windSpeed:parseFloat(we.WindSpeed),
+      temp:parseFloat(we.AirTemperature),
+      rh:parseFloat(we.RelativeHumidity),
+      pressure:parseFloat(we.AirPressure),
+      gust:parseFloat(we.GustInfo?.PeakGustSpeed),
+      precip:parseFloat(we.Now?.Precipitation),
+      dailyHigh:parseFloat(we.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature),
+      dailyLow:parseFloat(we.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature),
+    };
+  });
+  return Object.keys(obsData).length>0;
+}
+
+/* ══ 風向箭頭 ══ */
+function windDirArrow(deg){
+  if(isNaN(deg)||deg<0)return'';
+  const dirs=['↓','↙','←','↖','↑','↗','→','↘'];
+  // 風向是「風從哪來」→ 箭頭朝向風吹去的方向
+  return dirs[Math.round(deg/45)%8];
+}
+function windDirLabel(deg){
+  if(isNaN(deg)||deg<0)return'—';
+  const dirs=['北','東北','東','東南','南','西南','西','西北'];
+  return dirs[Math.round(deg/45)%8]+'風 '+deg.toFixed(0)+'°';
+}
+
+/* ══ 開啟氣象面板 ══ */
+function openWxPanel(stationName,rainfallVal,rainfallLabel){
+  const panel=document.getElementById('wx-panel');
+  const body=document.getElementById('wx-body');
+  const wx=obsData[stationName];
+
+  document.getElementById('wx-name').textContent=stationName;
+
+  if(!wx){
+    document.getElementById('wx-id').textContent='';
+    document.getElementById('wx-loc').textContent='（無氣象觀測資料）';
+    document.getElementById('wx-alt').textContent='';
+    body.innerHTML='<div class="wx-no-data">此站無對應氣象觀測資料<br><small>請確認已載入 O-A0001-001_Observation.json</small></div>';
+    panel.classList.add('visible');
+    return;
+  }
+
+  const loc=[wx.county,wx.town].filter(Boolean).join(' ');
+  document.getElementById('wx-id').textContent=wx.id?'('+wx.id+')':'';
+  document.getElementById('wx-loc').textContent=loc||'—';
+  document.getElementById('wx-alt').textContent=wx.alt!=null?'海拔 '+wx.alt+' m':'';
+
+  const v=n=>isNaN(n)||n<-90?'—':n;
+  const wIcon=wx.weather&&wx.weather!=='-99'?({'晴':'☀️','多雲':'⛅','陰':'☁️','雨':'🌧','霧':'🌫'}[wx.weather]||'🌡'):'';
+
+  const rainRow=rainfallVal!=null?`
+    <div class="wx-rain-row">
+      <span>🌧 ${rainfallLabel}</span>
+      <span><span class="wx-rain-val">${rainfallVal.toFixed(1)}</span> mm</span>
+    </div>`:'';
+
+  body.innerHTML=`
+    ${wx.weather&&wx.weather!=='-99'?`<div class="wx-weather-badge">${wIcon} ${wx.weather}</div>`:''}
+    <div class="wx-grid">
+      <div class="wx-cell warm">
+        <span class="wx-cell-label">氣溫</span>
+        <span><span class="wx-cell-val">${v(wx.temp)}</span><span class="wx-cell-unit"> °C</span></span>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">相對溼度</span>
+        <span><span class="wx-cell-val">${v(wx.rh)}</span><span class="wx-cell-unit"> %</span></span>
+      </div>
+      <div class="wx-cell highlight">
+        <span class="wx-cell-label">風速</span>
+        <span><span class="wx-wind-arrow">${windDirArrow(wx.windDir)}</span><span class="wx-cell-val">${isNaN(wx.windSpeed)||wx.windSpeed<0?'—':wx.windSpeed.toFixed(1)}</span><span class="wx-cell-unit"> m/s</span></span>
+        <span class="wx-cell-unit" style="font-size:9px;color:#7a90b0">${windDirLabel(wx.windDir)}</span>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">最大陣風</span>
+        <span><span class="wx-cell-val">${isNaN(wx.gust)||wx.gust<0?'—':wx.gust.toFixed(1)}</span><span class="wx-cell-unit"> m/s</span></span>
+      </div>
+      <div class="wx-cell" style="grid-column:1/-1;border-top:1px solid #eef2f8">
+        <span class="wx-cell-label">氣壓</span>
+        <span><span class="wx-cell-val" style="font-size:15px">${isNaN(wx.pressure)||wx.pressure<0?'—':wx.pressure.toFixed(1)}</span><span class="wx-cell-unit"> hPa</span></span>
+      </div>
+    </div>
+    <div class="wx-panel-foot">
+      <div class="wx-daily">
+        <div class="wx-daily-item">今日高 <span>${isNaN(wx.dailyHigh)?'—':wx.dailyHigh+'°C'}</span></div>
+        <div class="wx-daily-item">今日低 <span>${isNaN(wx.dailyLow)?'—':wx.dailyLow+'°C'}</span></div>
+      </div>
+      <div style="font-size:9px;color:#aab0c0">${wx.time?wx.time.slice(11):'—'}</div>
+    </div>
+    ${rainRow}`;
+
+  panel.classList.add('visible');
+}
+
+function closeWxPanel(){
+  document.getElementById('wx-panel').classList.remove('visible');
+}
+
+
+function parseRainfallJSON(json){
+  const stations=json?.records?.Station||json?.result?.records?.Station||json?.Station||null;
+  if(!stations||!stations.length)return false;
+  if(stations[0]?.ObsTime?.DateTime)
+    obsTimeStr=stations[0].ObsTime.DateTime.replace('T',' ').replace('+08:00','');
+  stationData=[];
+  stations.forEach(s=>{
+    const geo=s.GeoInfo||{};
+    const coords=geo.Coordinates||[];
+    const wgs=coords.find(c=>c.CoordinateName==='WGS84')||coords[0]||{};
+    const lat=parseFloat(wgs.StationLatitude),lon=parseFloat(wgs.StationLongitude);
+    if(isNaN(lat)||isNaN(lon))return;
+    const re=s.RainfallElement||{};
+    const get=k=>{const v=re[k]?.Precipitation,n=parseFloat(v);return isNaN(n)?null:n;};
+    stationData.push({
+      id:s.StationId,name:s.StationName,lat,lon,
+      county:geo.CountyName||'',town:geo.TownName||'',
+      rainfall:{Now:get('Now'),Past10Min:get('Past10Min'),Past1hr:get('Past1hr'),
+        Past3hr:get('Past3hr'),Past6Hr:get('Past6Hr'),Past12hr:get('Past12hr'),
+        Past24hr:get('Past24hr'),Past2days:get('Past2days'),Past3days:get('Past3days')}
+    });
+  });
+  return stationData.length>0;
+}
+
+/* ══ 繪製 ══ */
+function renderMap(){
+  const period=document.getElementById('period-sel').value;
+  const method=document.getElementById('interp-sel').value;
+  const selLabel=document.getElementById('period-sel').selectedOptions[0].text;
+  if(!stationData.length){setStatus('⚠ 請先載入 JSON 資料');return;}
+
+  const pts=stationData.map(s=>{const v=s.rainfall[period];return{...s,v:v??null};}).filter(s=>s.v!==null);
+  if(!pts.length){setStatus('⚠ 此時段無有效資料');return;}
+
+  updateRanking(pts);
+
+  const timeRange=calcTimeRange(obsTimeStr,period);
+  document.getElementById('mti-period').textContent=PERIOD_INFO[period].label;
+  document.getElementById('mti-range').textContent=timeRange;
+  document.getElementById('mti-obs').textContent='觀測截止：'+obsTimeStr;
+  document.getElementById('map-time-info').style.display='flex';
+  document.getElementById('obs-footer').innerHTML='觀測時間：'+obsTimeStr+'<br>有效站數：'+pts.length+' 站';
+
+  /* Canvas 插值（固定大台北範圍） */
+  const {minLat,maxLat,minLon,maxLon}=MAP_BOUNDS;
+  const W=600,H=420;
+  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d'),img=ctx.createImageData(W,H);
+  const p=method==='idw3'?3:2;
+  for(let py=0;py<H;py++){
+    for(let px=0;px<W;px++){
+      const lon=minLon+(px/W)*(maxLon-minLon);
+      const lat=maxLat-(py/H)*(maxLat-minLat);
+      const v=method==='nearest'?nearest(pts,lat,lon):idw(pts,lat,lon,p);
+      const [r,g,b]=hexRgb(getColor(v));
+      const a=v<0.05?20:Math.min(220,65+v*1.8);
+      const i=(py*W+px)*4;
+      img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=Math.round(a);
+    }
+  }
+  ctx.putImageData(img,0,0);
+
+  /* 陸地遮罩：若有 GeoJSON 則裁掉海域 */
+  if(landGeoJSON){
+    const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
+    const tc=tmp.getContext('2d');
+    // 把 GeoJSON 多邊形轉成 canvas 路徑
+    function latLonToXY(lat,lon){
+      return[(lon-minLon)/(maxLon-minLon)*W,(maxLat-lat)/(maxLat-minLat)*H];
+    }
+    function drawRing(ring){
+      ring.forEach(([lon,lat],i)=>{
+        const [x,y]=latLonToXY(lat,lon);
+        i===0?tc.moveTo(x,y):tc.lineTo(x,y);
+      });
+      tc.closePath();
+    }
+    tc.beginPath();
+    const feats=landGeoJSON.features||[{type:'Feature',geometry:landGeoJSON}];
+    feats.forEach(f=>{
+      const g=f.geometry||f;
+      if(!g)return;
+      const polys=g.type==='MultiPolygon'?g.coordinates:g.type==='Polygon'?[g.coordinates]:[];
+      polys.forEach(poly=>poly.forEach(ring=>drawRing(ring)));
+    });
+    tc.fillStyle='#000';tc.fill('evenodd');
+    // 用陸地遮罩 clip：destination-in 保留交集
+    const masked=document.createElement('canvas');masked.width=W;masked.height=H;
+    const mc=masked.getContext('2d');
+    mc.drawImage(canvas,0,0);
+    mc.globalCompositeOperation='destination-in';
+    mc.drawImage(tmp,0,0);
+    if(overlayLyr)map.removeLayer(overlayLyr);
+    overlayLyr=L.imageOverlay(masked.toDataURL(),[[minLat,minLon],[maxLat,maxLon]],{opacity:currentOpacity,zIndex:200}).addTo(map);
+  }else{
+    if(overlayLyr)map.removeLayer(overlayLyr);
+    overlayLyr=L.imageOverlay(canvas.toDataURL(),[[minLat,minLon],[maxLat,maxLon]],{opacity:currentOpacity,zIndex:200}).addTo(map);
+  }
+
+  if(stationLyr)map.removeLayer(stationLyr);
+  stationLyr=L.layerGroup();
+  pts.forEach(s=>{
+    const m=L.circleMarker([s.lat,s.lon],{radius:6,color:'#fff',weight:1.5,fillColor:getColor(s.v),fillOpacity:1,zIndexOffset:1000});
+    const loc=[s.county,s.town].filter(Boolean).join(' ');
+    m.bindTooltip(
+      `<div class="tt-name">${s.name}</div><div class="tt-loc">${loc}</div>`+
+      `<div class="tt-val">${s.v.toFixed(1)} mm</div><div class="tt-info">${selLabel}・點擊查看氣象</div>`,
+      {permanent:false,direction:'top',offset:[0,-8]}
+    );
+    m.on('click',()=>openWxPanel(s.name,s.v,selLabel));
+    stationLyr.addLayer(m);
+  });
+  stationLyr.addTo(map);
+
+  const maxV=Math.max(...pts.map(s=>s.v));
+  setStatus(`✔ 已繪製 ${pts.length} 站・${PERIOD_INFO[period].label}（${timeRange}）・全區最大 ${maxV.toFixed(1)} mm`);
+}
+
+/* ══ 自動載入預設檔案 ══ */
+async function loadDefaultFiles(){
+  let rainfallOk=false;
+  try{
+    const res=await fetch('https://keelung-rain-api.virgonelson0823.workers.dev/O-A0002-001_Rainfall.json?_='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseRainfallJSON(await res.json())){
+      document.getElementById('file-name').textContent='https://keelung-rain-api.virgonelson0823.workers.dev/O-A0002-001_Rainfall.json（'+stationData.length+'站）';
+      rainfallOk=true;
+    }
+  }catch(e){
+    document.getElementById('file-name').textContent='⚠ 自動載入失敗';
+    setStatus('⚠ 無法自動載入（'+e.message+'）—— 請用 python -m http.server 啟動，或手動開啟檔案');
+  }
+  try{
+    const res=await fetch('twcounty2010.3.json?_='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const gj=await res.json();
+    landGeoJSON=gj;
+    if(adminLyr)map.removeLayer(adminLyr);
+    adminLyr=L.geoJSON(gj,{style:{color:'#334466',weight:1.2,fillOpacity:0,dashArray:'5,3'}}).addTo(map);
+    document.getElementById('geojson-name').textContent='twcounty2010.3.json';
+  }catch(e){document.getElementById('geojson-name').textContent='⚠ 自動載入失敗';}
+  /* 自動載入氣象觀測 */
+  try{
+    const res=await fetch('O-A0001-001_Observation.json?_='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseObsJSON(await res.json())){
+      document.getElementById('obs-name').textContent='Observation.json（'+Object.keys(obsData).length+'站）';
+    }
+  }catch(e){document.getElementById('obs-name').textContent='⚠ 自動載入失敗';}
+  if(rainfallOk)renderMap();
+}
+
+/* ══ 更新資料（保持時段不變） ══ */
+async function refreshData(){
+  const btn=document.getElementById('refresh-btn');
+  const prevPeriod=document.getElementById('period-sel').value;
+  btn.classList.add('loading');btn.innerHTML='<span class="spin">⟳</span> 更新中…';
+  setStatus('正在重新載入雨量資料…');
+  try{
+    const res=await fetch('https://keelung-rain-api.virgonelson0823.workers.dev/O-A0002-001_Rainfall.json?_='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseRainfallJSON(await res.json())){
+      document.getElementById('file-name').textContent='https://keelung-rain-api.virgonelson0823.workers.dev/O-A0002-001_Rainfall.json（'+stationData.length+'站）';
+      document.getElementById('period-sel').value=prevPeriod;
+      renderMap();
+      setStatus('✔ 資料已更新（'+obsTimeStr+'）');
+    }
+  }catch(e){setStatus('⚠ 更新失敗：'+e.message);}
+  /* 同步更新氣象觀測 */
+  try{
+    const res=await fetch('O-A0001-001_Observation.json?_='+Date.now());
+    if(res.ok&&parseObsJSON(await res.json()))
+      document.getElementById('obs-name').textContent='Observation.json（'+Object.keys(obsData).length+'站）';
+  }catch(e){}
+  btn.classList.remove('loading');btn.innerHTML='⟳ 更新資料';
+}
+
+/* ══ 手動上傳 ══ */
+document.getElementById('file-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      if(!parseRainfallJSON(JSON.parse(ev.target.result))){setStatus('⚠ 無法解析 JSON');return;}
+      document.getElementById('file-name').textContent=f.name+'（'+stationData.length+'站）';
+      setStatus('✔ 已載入 '+f.name+'，共 '+stationData.length+' 站');
+      renderMap();
+    }catch(err){setStatus('✘ JSON 解析失敗：'+err.message);}
+  };
+  r.readAsText(f,'utf-8');
+});
+document.getElementById('geojson-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const gj=JSON.parse(ev.target.result);
+      landGeoJSON=gj;
+      if(adminLyr)map.removeLayer(adminLyr);
+      adminLyr=L.geoJSON(gj,{style:{color:'#334466',weight:1.2,fillOpacity:0,dashArray:'5,3'}}).addTo(map);
+      document.getElementById('geojson-name').textContent=f.name;
+      setStatus('✔ 行政區界已載入：'+f.name);
+    }catch(err){setStatus('✘ GeoJSON 解析失敗：'+err.message);}
+  };
+  r.readAsText(f,'utf-8');
+});
+document.getElementById('obs-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      if(!parseObsJSON(JSON.parse(ev.target.result))){setStatus('⚠ 無法解析氣象觀測 JSON');return;}
+      document.getElementById('obs-name').textContent=f.name+'（'+Object.keys(obsData).length+'站）';
+      setStatus('✔ 氣象觀測已載入：'+f.name+'，共 '+Object.keys(obsData).length+' 站');
+    }catch(err){setStatus('✘ 氣象 JSON 解析失敗：'+err.message);}
+  };
+  r.readAsText(f,'utf-8');
+});
+
+document.getElementById('period-sel').addEventListener('change',()=>{if(stationData.length)renderMap();});
+function setStatus(m){document.getElementById('status').textContent=m;}
+
+/* ══ 設定下拉開關 ══ */
+function toggleSettings(e){
+  e.stopPropagation();
+  const dd=document.getElementById('settings-dropdown');
+  const btn=document.getElementById('settings-btn');
+  const rect=btn.getBoundingClientRect();
+  dd.style.top=(rect.bottom+4)+'px';
+  dd.style.right=(window.innerWidth-rect.right)+'px';
+  dd.classList.toggle('open');
+}
+document.addEventListener('click',function(e){
+  const wrap=document.getElementById('settings-wrap');
+  if(wrap&&!wrap.contains(e.target))
+    document.getElementById('settings-dropdown').classList.remove('open');
+});
+
+/* ══ 自動刷新（30分鐘） ══ */
+setInterval(refreshData,30*60*1000);
+
+/* ══ 初始化 ══ */
+buildLegend();
+loadDefaultFiles();
+</script>
+</body>
+</html>
+<!--
+══════════════════════════════════════════════════════════
+  必須用 http:// 啟動，才能自動讀取同目錄 JSON
+
+  步驟：
+  1. 開啟命令提示字元，cd 到 HTML 所在資料夾
+       cd D:\keelung_rain
+
+  2. 啟動 Python 簡易伺服器
+       python -m http.server 8080
+
+  3. 瀏覽器開啟
+       http://localhost:8080/keelung_rainfall_v5.html
+
+  ── 自動更新 getdata.py ──
+  另開一個 CMD 視窗執行（讓資料持續更新）：
+       python getdata.py
+
+  HTML 本身每 30 分鐘自動重新讀取 JSON 並重繪。
+  也可手動按「⟳ 更新資料」立即觸發。
+
+  v6 新增：點擊地圖測站圓點 → 左下角彈出氣象資訊面板
+  需同目錄放置 O-A0001-001_Observation.json
+══════════════════════════════════════════════════════════
+-->
