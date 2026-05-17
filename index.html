@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌧 臺灣雨量監測</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;background:#f0f3f8;color:#1a2030;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{background:#fff;border-bottom:1px solid #dde3ec;padding:0 14px;display:flex;align-items:center;gap:9px;flex-shrink:0;height:46px;overflow-x:auto;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.toolbar::-webkit-scrollbar{height:3px}
+.toolbar::-webkit-scrollbar-thumb{background:#ccd3df;border-radius:2px}
+.toolbar-title{font-size:16px;font-weight:700;color:#1a4a8a;white-space:nowrap}
+.sep{width:1px;height:20px;background:#dde3ec;flex-shrink:0}
+.ctrl-group{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.ctrl-lbl{font-size:12px;color:#6a7a99;white-space:nowrap}
+select,.btn{height:28px;padding:0 8px;border:1px solid #d0d8e8;border-radius:5px;background:#fff;color:#1a2030;font-family:inherit;font-size:13px;cursor:pointer;outline:none;transition:border-color .15s,box-shadow .15s}
+select:hover,.btn:hover{border-color:#4a7acc;box-shadow:0 0 0 2px rgba(74,122,204,.1)}
+.btn.primary{background:#1a4a8a;border-color:#1a4a8a;color:#fff;font-weight:700;padding:0 12px}
+.btn.primary:hover{background:#1e56a0;box-shadow:0 2px 8px rgba(26,74,138,.3)}
+.btn.refresh{background:#f0f8ee;border-color:#5aaa44;color:#2a7a1a;font-weight:600;padding:0 12px}
+.btn.refresh:hover{background:#e4f5e0;border-color:#3a9a2a}
+.btn.refresh.loading{opacity:.6;pointer-events:none}
+.slider-wrap{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.slider-wrap input[type=range]{width:80px;height:4px;cursor:pointer;accent-color:#1a4a8a}
+.slider-val{font-size:11px;color:#1a4a8a;font-weight:700;width:30px;text-align:right}
+.author-credit-toolbar{font-size:11px;color:rgba(30,40,70,.55);white-space:nowrap;flex-shrink:0;padding-right:2px}
+.author-credit-toolbar a{color:#1a4a8a;text-decoration:none;opacity:.7}
+.author-credit-toolbar a:hover{opacity:1;text-decoration:underline}
+.toolbar-data-info{font-size:11px;color:#3a5078;white-space:nowrap;flex-shrink:0;background:#f0f5ff;border:1px solid #c8d8f0;border-radius:5px;padding:2px 10px;line-height:1.5;text-align:right}
+.leaflet-control-layers{border:1px solid #c8d8f0!important;border-radius:8px!important;box-shadow:0 4px 16px rgba(26,74,138,.15)!important;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif!important;font-size:12px!important}
+.leaflet-control-layers-expanded{padding:8px 12px!important}
+.leaflet-control-layers label{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer}
+.leaflet-control-layers-selector{margin:0!important}
+.main{display:flex;flex:1;overflow:hidden}
+.map-wrap{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+.map-time-info{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:800;background:rgba(255,255,255,.96);border:1px solid #c0d0e8;border-radius:8px;padding:6px 18px;box-shadow:0 2px 12px rgba(0,0,0,.1);display:none;align-items:center;gap:8px;font-size:14px;pointer-events:none;white-space:nowrap}
+.mti-period{font-weight:700;color:#1a4a8a;font-size:17px}
+.mti-sep{color:#c0cfe8}
+.mti-range{color:#3a5078;font-size:15px}
+
+/* 浮動色標 — 玻璃擬態右下角（放大30%） */
+.sb-legend{position:absolute;bottom:36px;right:10px;z-index:800;width:76px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(200,218,245,.6);border-radius:10px;box-shadow:0 4px 18px rgba(26,74,138,.18);display:flex;flex-direction:column;overflow:hidden;padding:8px 6px;pointer-events:none}
+.sb-legend-title{font-size:11px;font-weight:700;color:#6a88b8;letter-spacing:.3px;margin-bottom:5px;text-align:center;line-height:1.35}
+.legend-bar-col{display:flex;flex-direction:column;gap:2px}
+.leg-row{display:flex;align-items:center;gap:4px}
+.leg-swatch{width:18px;height:10px;flex-shrink:0;border-radius:2px;border:1px solid rgba(0,0,0,.07)}
+.leg-lbl{font-size:11px;color:#4a5a78;white-space:nowrap;line-height:1}
+
+/* 右側排名面板 */
+.sb-rank{width:480px;flex-shrink:0;background:#fff;border-left:1px solid #dde3ec;display:flex;flex-direction:column;overflow:hidden}
+.rank-controls{padding:7px 8px 6px;border-bottom:1px solid #edf0f7;display:flex;flex-direction:column;gap:5px;flex-shrink:0;background:#fafbfd}
+.rank-search-row{display:flex;gap:5px;align-items:center}
+.rank-search{flex:1;height:26px;border:1px solid #d0d8e8;border-radius:5px;padding:0 7px;font-family:inherit;font-size:12px;color:#1a2030;outline:none;background:#fff;transition:border-color .15s}
+.rank-search:focus{border-color:#4a7acc;box-shadow:0 0 0 2px rgba(74,122,204,.1)}
+.rank-search::placeholder{color:#aabbd0}
+.county-dropdown-wrap{position:relative}
+.county-btn{height:26px;padding:0 8px;border:1px solid #d0d8e8;border-radius:5px;background:#fff;color:#1a2030;font-family:inherit;font-size:12px;cursor:pointer;outline:none;display:flex;align-items:center;gap:4px;white-space:nowrap;transition:border-color .15s}
+.county-btn:hover,.county-btn.open{border-color:#4a7acc;box-shadow:0 0 0 2px rgba(74,122,204,.1)}
+.county-btn-arrow{font-size:9px;color:#8a9ab8;transition:transform .15s}
+.county-btn.open .county-btn-arrow{transform:rotate(180deg)}
+.county-badge{background:#1a4a8a;color:#fff;border-radius:3px;font-size:10px;font-weight:700;padding:1px 4px;margin-left:1px}
+.county-panel{position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #c8d8f0;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14);width:190px;padding:6px 0;display:none}
+.county-panel.open{display:block}
+.county-panel-head{padding:5px 10px 4px;font-size:10px;font-weight:700;color:#7a90b0;letter-spacing:.8px;display:flex;justify-content:space-between;align-items:center}
+.county-clear-btn{font-size:10px;color:#1a4a8a;cursor:pointer;padding:1px 4px;border-radius:3px;background:#f0f5ff;border:none;font-family:inherit}
+.county-clear-btn:hover{background:#e0ecff}
+.county-list{max-height:230px;overflow-y:auto;padding:2px 0}
+.county-list::-webkit-scrollbar{width:4px}
+.county-list::-webkit-scrollbar-thumb{background:#d0d8e8;border-radius:2px}
+.county-item{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:#1a2030;transition:background .1s;user-select:none}
+.county-item:hover{background:#f0f5ff}
+.county-item input[type=checkbox]{width:13px;height:13px;accent-color:#1a4a8a;flex-shrink:0;cursor:pointer}
+.county-item.disabled{opacity:.4;cursor:not-allowed}
+.county-hint{padding:4px 10px 2px;font-size:10px;color:#aabbd0;border-top:1px solid #f0f3f8;margin-top:3px}
+.filter-chips{display:flex;flex-wrap:wrap;gap:3px;padding:0 2px}
+.filter-chip{display:flex;align-items:center;gap:3px;background:#e8f0ff;border:1px solid #c0d4f8;border-radius:4px;padding:1px 6px 1px 7px;font-size:10px;color:#1a4a8a;font-weight:600;cursor:pointer;white-space:nowrap}
+.filter-chip:hover{background:#d8e8ff}
+.filter-chip-x{font-size:9px;color:#7a90b8}
+.sb-rank-header{padding:6px 10px 5px;font-size:10px;font-weight:700;color:#7a90b0;letter-spacing:1.2px;text-transform:uppercase;flex-shrink:0;border-bottom:1px solid #f0f3f8;display:flex;align-items:center;justify-content:space-between}
+.rank-count-tag{font-size:10px;font-weight:400;color:#aabbd0;letter-spacing:0}
+
+/* 虛擬捲動 */
+.rank-scroll{flex:1;overflow-y:auto;position:relative}
+.rank-scroll::-webkit-scrollbar{width:4px}
+.rank-scroll::-webkit-scrollbar-thumb{background:#d0d8e8;border-radius:2px}
+#rank-spacer{width:100%;pointer-events:none}
+#rank-viewport{position:absolute;top:0;left:0;right:0;padding:0 5px}
+
+/* 單行 rank-item — 固定高度 27px，字體放大一級 */
+.rank-item{display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:3px;border-bottom:1px solid #f0f3f8;transition:background .08s;cursor:pointer;white-space:nowrap;overflow:hidden;height:27px;line-height:27px}
+.rank-item:hover{background:#edf4ff}
+.rain-heavy{background:#fffbe6!important;border-bottom:1px solid #f5c518!important}
+.rain-heavy:hover{background:#fff5c0!important}
+.rain-torrential{background:#fff3e6!important;border-bottom:1px solid #ff8800!important}
+.rain-torrential:hover{background:#ffe8cc!important}
+.rain-extreme{background:#fff0f0!important;border-bottom:1px solid #ee2200!important}
+.rain-extreme:hover{background:#ffd8d0!important}
+.rain-super{background:#fdf0ff!important;border-bottom:1px solid #9900cc!important}
+.rain-super:hover{background:#f5d8ff!important}
+.rain-badge{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;white-space:nowrap;flex-shrink:0;line-height:17px}
+.rb-heavy{background:#f5c518;color:#5a3a00}
+.rb-torrential{background:#ff8800;color:#fff}
+.rb-extreme{background:#ee2200;color:#fff}
+.rb-super{background:#9900cc;color:#fff}
+.rank-num{font-size:11px;font-weight:700;color:#8a9ab8;width:24px;text-align:right;flex-shrink:0}
+.rank-num.r1{color:#f5a623}.rank-num.r2{color:#9b9b9b}.rank-num.r3{color:#c87533}
+/* 色階圓點 */
+.rank-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block}
+.rank-name-inline{font-size:13px;font-weight:700;color:#1a2a4a;flex-shrink:0}
+.rank-id-inline{font-size:11px;color:#aabbd0;flex-shrink:0;margin:0 3px}
+.rank-loc-inline{font-size:11px;color:#8a9ab8;flex:1;overflow:hidden;text-overflow:ellipsis}
+.rank-val-inline{font-size:13px;font-weight:700;color:#1a6acc;flex-shrink:0}
+.rank-unit-inline{font-size:10px;color:#8a9ab8;flex-shrink:0;margin-left:1px}
+.rank-empty{font-size:12px;color:#aabbcc;padding:12px 0;text-align:center}
+.statusbar{background:#fff;border-top:1px solid #dde3ec;padding:3px 12px;font-size:10px;color:#7a8faa;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Leaflet tooltip */
+.leaflet-tooltip{background:#fff!important;border:1px solid #c0d0e8!important;color:#1a2030!important;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif!important;font-size:13px!important;border-radius:6px!important;box-shadow:0 2px 10px rgba(0,0,0,.12)!important;padding:6px 10px!important}
+.leaflet-tooltip::before{display:none!important}
+.tt-name{font-weight:700;color:#1a4a8a;margin-bottom:1px;font-size:14px}
+.tt-loc{font-size:11px;color:#7a90b0;margin-bottom:3px}
+.tt-val{color:#1a8a3a;font-size:15px;font-weight:700}
+.tt-info{color:#8a9ab8;font-size:11px;margin-top:2px}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+
+/* 氣象面板 — 橫向緊湊版 */
+@keyframes panelSlideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.wx-panel{position:absolute;bottom:36px;left:12px;z-index:900;background:rgba(255,255,255,.97);border:1px solid #c8d8f0;border-radius:10px;box-shadow:0 4px 24px rgba(26,74,138,.15);width:300px;overflow:hidden;animation:panelSlideIn .2s ease;display:none}
+.wx-panel.visible{display:block}
+.wx-panel-head{background:linear-gradient(135deg,#1a4a8a 0%,#1e6acc 100%);padding:7px 10px 6px;display:flex;align-items:center;justify-content:space-between}
+.wx-head-left{flex:1;min-width:0;display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
+.wx-station-name{font-size:14px;font-weight:700;color:#fff;line-height:1.2}
+.wx-station-id{font-size:10px;font-weight:400;color:rgba(255,255,255,.6)}
+.wx-station-loc{font-size:10px;color:rgba(255,255,255,.7)}
+.wx-station-alt{font-size:10px;color:rgba(255,255,255,.5)}
+.wx-panel-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:12px;line-height:20px;text-align:center;flex-shrink:0;margin-left:6px;transition:background .15s}
+.wx-panel-close:hover{background:rgba(255,255,255,.35)}
+.wx-weather-badge{padding:3px 10px;background:#f0f5ff;border-bottom:1px solid #e4eaf8;font-size:11px;color:#3a5a9a;font-weight:600;display:flex;align-items:center;gap:4px}
+/* 橫向 3 列緊湊格 */
+.wx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e8eef8}
+.wx-cell{background:#fff;padding:5px 8px;display:flex;flex-direction:column;gap:1px}
+.wx-cell-label{font-size:9px;color:#8a9ab8;letter-spacing:.5px;font-weight:600;white-space:nowrap}
+.wx-cell-val{font-size:14px;font-weight:700;color:#1a2a4a;line-height:1.1}
+.wx-cell-unit{font-size:10px;color:#8a9ab8}
+.wx-cell.highlight .wx-cell-val{color:#1a6acc}
+.wx-cell.warm .wx-cell-val{color:#cc4400}
+.wx-wind-arrow{font-size:12px;margin-right:1px}
+.wx-wind-sub{font-size:9px;color:#7a90b0;margin-top:1px}
+/* 雨量 + 頁腳同一行 */
+.wx-foot-row{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;background:#f8faff;border-top:1px solid #e8eef8;font-size:10px;color:#8a9ab8;gap:6px}
+.wx-daily{display:flex;gap:8px}
+.wx-daily-item{font-size:10px;color:#5a7aaa;white-space:nowrap}
+.wx-daily-item span{font-weight:700;color:#1a2a4a}
+.wx-no-data{padding:14px 12px;font-size:12px;color:#aab0c0;text-align:center}
+.wx-rain-inline{font-size:10px;color:#1a6acc;font-weight:700;white-space:nowrap}
+
+/* 手機版 */
+@media(max-width:600px){
+  body{overflow:hidden}
+  .toolbar{height:40px;padding:0 8px;gap:6px}
+  .toolbar-title{font-size:11px}
+  select,.btn{height:26px;font-size:11px;padding:0 6px}
+  .btn.primary,.btn.refresh{padding:0 10px}
+  .slider-wrap input[type=range]{width:56px}
+  .slider-val{width:26px;font-size:10px}
+  .ctrl-lbl{font-size:10px}
+  .main{position:relative}
+  .map-wrap{flex:1}
+  .sb-legend{width:44px;padding:4px 3px;bottom:26px;left:6px}
+  .sb-legend-title{font-size:7.5px;margin-bottom:3px}
+  .leg-swatch{width:11px;height:6px}
+  .leg-lbl{font-size:7px}
+  .sb-rank{position:absolute;top:8px;right:4px;z-index:800;width:65vw;background:rgba(255,255,255,.92);border:1px solid rgba(200,216,240,.7);border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.14);backdrop-filter:blur(4px);max-height:calc(100% - 60px)}
+  .rank-controls{padding:4px 5px;gap:3px}
+  .rank-search{height:22px;font-size:10px}
+  .county-btn{height:22px;font-size:10px;padding:0 5px}
+  .sb-rank-header{font-size:8px;padding:4px 6px 3px}
+  .rank-item{height:22px;line-height:22px;padding:0 3px}
+  .rank-num{font-size:9px;width:16px}
+  .rank-name-inline{font-size:9.5px}
+  .rank-id-inline{font-size:8.5px}
+  .rank-loc-inline{font-size:8.5px}
+  .rank-val-inline{font-size:10px}
+  .rank-unit-inline{font-size:7.5px}
+  .rain-badge{font-size:7.5px;padding:0 3px;line-height:14px}
+  .author-credit{font-size:7.5px;padding:3px 5px}
+  .mti-period{font-size:13px}
+  .wx-panel{position:fixed;bottom:0;left:0;right:0;width:100%!important;border-radius:14px 14px 0 0;max-height:55vh;overflow-y:auto;z-index:1200}
+  .wx-panel-head{padding:6px 10px 5px}
+  .wx-station-name{font-size:12px}
+  .wx-station-id,.wx-station-loc,.wx-station-alt{font-size:9px}
+  .wx-panel-close{width:20px;height:20px;font-size:11px;line-height:20px}
+  .wx-weather-badge{font-size:10px;padding:3px 8px}
+  .wx-grid{grid-template-columns:repeat(3,1fr)}
+  .wx-cell{padding:5px 6px}
+  .wx-cell-label{font-size:8px}
+  .wx-cell-val{font-size:13px}
+  .wx-cell-unit{font-size:9px}
+  .wx-foot-row{padding:4px 8px;font-size:9px}
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-title">🌧 臺灣雨量監測</div>
+  <div class="sep"></div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">時段</span>
+    <select id="period-sel">
+      <option value="Now">當日累積</option>
+      <option value="Past10Min">過去 10 分鐘</option>
+      <option value="Past1hr">過去 1 小時</option>
+      <option value="Past3hr">過去 3 小時</option>
+      <option value="Past6Hr">過去 6 小時</option>
+      <option value="Past12hr">過去 12 小時</option>
+      <option value="Past24hr" selected>過去 24 小時</option>
+      <option value="Past2days">過去 2 天</option>
+      <option value="Past3days">過去 3 天</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">插值</span>
+    <select id="interp-sel">
+      <option value="idw2">反距離加權 IDW p=2</option>
+      <option value="idw3" selected>反距離加權 IDW p=3</option>
+      <option value="nearest">最近鄰插值</option>
+    </select>
+  </div>
+  <div class="slider-wrap">
+    <span class="ctrl-lbl">透明度</span>
+    <input type="range" id="opacity-slider" min="0" max="100" value="100" oninput="updateOpacity(this.value)">
+    <span class="slider-val" id="opacity-val">100%</span>
+  </div>
+  <button class="btn refresh" id="refresh-btn" onclick="refreshData()" style="padding:0 18px;font-size:13px;min-width:96px">⟳ 更新資料</button>
+  <div style="flex:1"></div>
+  <div class="toolbar-data-info" id="toolbar-data-info" style="display:none"></div>
+  <div class="sep"></div>
+  <div class="author-credit-toolbar">中央氣象署基隆氣象站　鄧乃誠 製作　<a href="https://keelungcwa.github.io/keelungcwa/" target="_blank" rel="noopener">🏠</a></div>
+  <input type="file" id="file-input" accept=".json" style="display:none">
+  <input type="file" id="obs-input" accept=".json" style="display:none">
+  <input type="file" id="geojson-input" accept=".geojson,.json" style="display:none">
+  <span id="file-name" style="display:none"></span>
+  <span id="obs-name" style="display:none"></span>
+  <span id="geojson-name" style="display:none"></span>
+</div>
+
+<div class="main">
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <div class="wx-panel" id="wx-panel">
+      <div class="wx-panel-head">
+        <div class="wx-head-left">
+          <div class="wx-station-name">
+            <span id="wx-name">—</span>
+            <span class="wx-station-id" id="wx-id"></span>
+          </div>
+          <div class="wx-station-loc" id="wx-loc">—</div>
+          <div class="wx-station-alt" id="wx-alt"></div>
+        </div>
+        <button class="wx-panel-close" onclick="closeWxPanel()">✕</button>
+      </div>
+      <div id="wx-body"><div class="wx-no-data">載入氣象資料後可顯示</div></div>
+    </div>
+
+    <div class="map-time-info" id="map-time-info">
+      <span class="mti-period" id="mti-period">—</span>
+      <span class="mti-sep">|</span>
+      <span class="mti-range" id="mti-range">—</span>
+    </div>
+
+    <!-- 浮動色標 玻璃擬態 -->
+    <div class="sb-legend" id="sb-legend">
+      <div class="sb-legend-title">雨量<br>(mm)</div>
+      <div class="legend-bar-col" id="legend-wrap"></div>
+    </div>
+  </div>
+
+  <!-- 右側排名 -->
+  <div class="sb-rank">
+    <div class="rank-controls">
+      <div class="rank-search-row">
+        <input class="rank-search" id="rank-search" type="text" placeholder="搜尋測站、縣市…" oninput="onSearchChange()">
+        <div class="county-dropdown-wrap">
+          <button class="county-btn" id="county-btn" onclick="toggleCountyPanel()">
+            <span id="county-btn-label">全部縣市</span>
+            <span class="county-badge" id="county-badge" style="display:none">0</span>
+            <span class="county-btn-arrow">▾</span>
+          </button>
+          <div class="county-panel" id="county-panel">
+            <div class="county-panel-head">
+              <span>選擇縣市（最多 3 個）</span>
+              <button class="county-clear-btn" onclick="clearCounties()">全清除</button>
+            </div>
+            <div class="county-list" id="county-list"></div>
+            <div class="county-hint" id="county-hint"></div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-chips" id="filter-chips" style="display:none"></div>
+    </div>
+
+    <div class="sb-rank-header" id="sort-header" onclick="toggleSort()" style="cursor:pointer;user-select:none" title="點擊切換排序方向">
+      <span id="sort-label">↓ 由大到小</span>
+      <span class="rank-count-tag" id="rank-count-tag"></span>
+    </div>
+
+    <!-- 虛擬捲動容器 -->
+    <div class="rank-scroll" id="rank-scroll">
+      <div id="rank-spacer"></div>
+      <div id="rank-viewport"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="statusbar" id="status">初始化中，自動載入資料…</div>
+
+<script>
+/* ══ 常數 ══ */
+const MAP_BOUNDS={minLat:21.85,maxLat:25.45,minLon:119.8,maxLon:122.15};
+const API_BASE='https://tw-rain-api.virgonelson0823.workers.dev';
+const ITEM_H=27;   // 虛擬捲動行高，與 CSS height:27px 同步
+const BUFFER=25;   // 上下緩衝列數
+
+const SCALE=[
+  {hi:1,   color:'#e8e8e8',label:'< 1'},
+  {hi:2,   color:'#a0d8f8',label:'1–2'},
+  {hi:6,   color:'#5abcf0',label:'2–6'},
+  {hi:10,  color:'#00aaee',label:'6–10'},
+  {hi:15,  color:'#0066cc',label:'10–15'},
+  {hi:20,  color:'#00aa44',label:'15–20'},
+  {hi:30,  color:'#55cc00',label:'20–30'},
+  {hi:40,  color:'#ddee00',label:'30–40'},
+  {hi:50,  color:'#ffcc00',label:'40–50'},
+  {hi:70,  color:'#ff8800',label:'50–70'},
+  {hi:90,  color:'#ff4400',label:'70–90'},
+  {hi:110, color:'#cc0000',label:'90–110'},
+  {hi:130, color:'#880022',label:'110–130'},
+  {hi:150, color:'#660088',label:'130–150'},
+  {hi:200, color:'#aa00cc',label:'150–200'},
+  {hi:300, color:'#ee44ee',label:'200–300'},
+  {hi:Infinity,color:'#ffaaff',label:'> 300'},
+];
+
+function getColor(v){for(const s of SCALE)if(v<s.hi)return s.color;return'#ffaaff'}
+function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
+
+function buildLegend(){
+  const w=document.getElementById('legend-wrap');
+  const frag=document.createDocumentFragment();
+  [...SCALE].reverse().forEach(s=>{
+    const d=document.createElement('div');d.className='leg-row';
+    d.innerHTML=`<div class="leg-swatch" style="background:${s.color}"></div><span class="leg-lbl">${s.label}</span>`;
+    frag.appendChild(d);
+  });
+  w.appendChild(frag);
+}
+
+/* ══ 時段 ══ */
+const PERIOD_INFO={
+  Now:      {label:'當日累積',    duration:0},
+  Past10Min:{label:'過去 10 分鐘',duration:10},
+  Past1hr:  {label:'過去 1 小時', duration:60},
+  Past3hr:  {label:'過去 3 小時', duration:180},
+  Past6Hr:  {label:'過去 6 小時', duration:360},
+  Past12hr: {label:'過去 12 小時',duration:720},
+  Past24hr: {label:'過去 24 小時',duration:1440},
+  Past2days:{label:'過去 2 天',   duration:2880},
+  Past3days:{label:'過去 3 天',   duration:4320},
+};
+
+function calcTimeRange(obsTime,period){
+  if(!obsTime||obsTime==='—')return'—';
+  try{
+    const endDt=new Date(obsTime.replace(' ','T')+'+08:00');
+    const info=PERIOD_INFO[period];
+    const fmt=dt=>`${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    if(info.duration===0)return fmt(endDt);
+    return`${fmt(new Date(endDt-info.duration*60000))} ～ ${fmt(endDt)}`;
+  }catch(e){return'—';}
+}
+
+/* ══ Leaflet ══ */
+const map=L.map('map',{zoomControl:true}).setView([23.7,121.0],8);
+const basemaps={
+  '🗺 標準地圖': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org">OpenStreetMap</a>',maxZoom:18}),
+  '⬛ 深色底圖': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© <a href="https://carto.com">CARTO</a>',maxZoom:19}),
+  '🏔 地形圖':   L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a>',maxZoom:17}),
+  '🌫 淡色底圖': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© <a href="https://carto.com">CARTO</a>',maxZoom:19}),
+  '🛰 衛星影像': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© <a href="https://www.esri.com">Esri</a>',maxZoom:19}),
+};
+basemaps['🗺 標準地圖'].addTo(map);
+L.control.layers(basemaps,{},{position:'topleft',collapsed:true}).addTo(map);
+
+let overlayLyr=null,stationLyr=null,adminLyr=null,currentOpacity=1.0;
+let landGeoJSON=null;
+
+function updateOpacity(val){
+  currentOpacity=val/100;
+  document.getElementById('opacity-val').textContent=val+'%';
+  if(overlayLyr)overlayLyr.setOpacity(currentOpacity);
+}
+
+/* ══ 豪大雨等級（依氣象署標準，短時達標同樣成立）
+   24h 標準：套用於 Now / Past24hr 以及所有更短時段
+   3h 標準： 套用於 Past3hr 以及更短時段（Past1hr、Past10Min）
+   1h 標準： 套用於 Past1hr 以及更短時段
+   Past2days / Past3days 多日累積不套用單日標準 ══ */
+function getRainLevel(v,period){
+  const PERIODS_ORDER=['Past10Min','Past1hr','Past3hr','Past6Hr','Past12hr','Now','Past24hr','Past2days','Past3days'];
+  const idx=PERIODS_ORDER.indexOf(period);
+  // 24h 以內（含）的時段都可套用 24h 門檻
+  const within24h=(idx>=0&&idx<=6); // Past10Min ~ Past24hr & Now
+  const within3h =(idx>=0&&idx<=2); // Past10Min ~ Past3hr
+  const within1h =(idx>=0&&idx<=1); // Past10Min ~ Past1hr
+
+  if(within24h&&v>=500)return{cls:'rain-super',     badgeCls:'rb-super',     label:'超大豪雨'};
+  if(within24h&&v>=350)return{cls:'rain-extreme',   badgeCls:'rb-extreme',   label:'大豪雨'};
+  if(within3h &&v>=200)return{cls:'rain-extreme',   badgeCls:'rb-extreme',   label:'大豪雨'};
+  if(within24h&&v>=200)return{cls:'rain-torrential',badgeCls:'rb-torrential',label:'豪雨'};
+  if(within3h &&v>=100)return{cls:'rain-torrential',badgeCls:'rb-torrential',label:'豪雨'};
+  if(within24h&&v>=80) return{cls:'rain-heavy',     badgeCls:'rb-heavy',     label:'大雨'};
+  if(within1h &&v>=40) return{cls:'rain-heavy',     badgeCls:'rb-heavy',     label:'大雨'};
+  return null;
+}
+
+/* ══════════════════════════════════════════
+   虛擬捲動 Virtual Scroll
+══════════════════════════════════════════ */
+let vsData=[];
+let vsPeriod='';
+let vsRaf=null;
+
+function vsInit(sorted,period){
+  vsData=sorted;
+  vsPeriod=period;
+  const scroll=document.getElementById('rank-scroll');
+  document.getElementById('rank-spacer').style.height=(sorted.length*ITEM_H)+'px';
+  scroll.scrollTop=0;
+  vsRender(0);
+}
+
+function vsRender(scrollTop){
+  const scroll=document.getElementById('rank-scroll');
+  const vp=document.getElementById('rank-viewport');
+  const visH=scroll.clientHeight||600;
+  const startIdx=Math.max(0,Math.floor(scrollTop/ITEM_H)-BUFFER);
+  const endIdx=Math.min(vsData.length-1,Math.ceil((scrollTop+visH)/ITEM_H)+BUFFER);
+
+  vp.style.top=(startIdx*ITEM_H)+'px';
+
+  const frag=document.createDocumentFragment();
+  for(let i=startIdx;i<=endIdx;i++){
+    const s=vsData[i];
+    const lvl=getRainLevel(s.v,vsPeriod);
+    const numCls=i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const el=document.createElement('div');
+    el.className='rank-item'+(lvl?' '+lvl.cls:'');
+    el.dataset.name=s.name;
+    el.dataset.v=s.v;
+    el.innerHTML=
+      `<span class="rank-num ${numCls}">${i+1}</span>`+
+      `<span class="rank-dot" style="background:${getColor(s.v)}"></span>`+
+      `<span class="rank-name-inline">${s.name}</span>`+
+      `<span class="rank-id-inline">${s.id||''}</span>`+
+      `<span class="rank-loc-inline">${s.county}${s.town?' '+s.town:''}</span>`+
+      `<span class="rank-val-inline">${s.v.toFixed(1)}</span>`+
+      `<span class="rank-unit-inline">mm</span>`+
+      (lvl?`<span class="rain-badge ${lvl.badgeCls}" style="margin-left:4px">${lvl.label}</span>`:'');
+    frag.appendChild(el);
+  }
+  vp.innerHTML='';
+  vp.appendChild(frag);
+}
+
+/* scroll 事件 + rAF 節流 */
+document.getElementById('rank-scroll').addEventListener('scroll',function(){
+  if(vsRaf)cancelAnimationFrame(vsRaf);
+  const top=this.scrollTop;
+  vsRaf=requestAnimationFrame(()=>vsRender(top));
+},{passive:true});
+
+/* 點擊用事件委派，不需每列 addEventListener */
+document.getElementById('rank-scroll').addEventListener('click',e=>{
+  const item=e.target.closest('.rank-item');
+  if(!item)return;
+  openWxPanel(item.dataset.name,parseFloat(item.dataset.v),
+    document.getElementById('period-sel').selectedOptions[0].text);
+});
+
+/* ══ 縣市篩選 ══ */
+let selectedCounties=new Set();
+let allCounties=[];
+let currentPts=[];
+let searchText='';
+
+function buildCountyList(pts){
+  const counts={};
+  pts.forEach(s=>{if(s.county)counts[s.county]=(counts[s.county]||0)+1;});
+  const order=['臺北市','新北市','基隆市','桃園市','新竹市','新竹縣','苗栗縣','臺中市','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','臺南市','高雄市','屏東縣','宜蘭縣','花蓮縣','臺東縣','澎湖縣','金門縣','連江縣'];
+  allCounties=Object.keys(counts).sort((a,b)=>{
+    const ia=order.indexOf(a),ib=order.indexOf(b);
+    if(ia<0&&ib<0)return a.localeCompare(b,'zh-TW');
+    if(ia<0)return 1;if(ib<0)return-1;return ia-ib;
+  });
+  renderCountyList();
+}
+
+function renderCountyList(){
+  const el=document.getElementById('county-list');
+  const frag=document.createDocumentFragment();
+  allCounties.forEach(county=>{
+    const checked=selectedCounties.has(county);
+    const disabled=!checked&&selectedCounties.size>=3;
+    const item=document.createElement('div');
+    item.className='county-item'+(disabled?' disabled':'');
+    item.innerHTML=`<input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}><span>${county}</span>`;
+    item.querySelector('input').addEventListener('change',e=>{
+      e.stopPropagation();
+      if(e.target.checked){if(selectedCounties.size<3)selectedCounties.add(county);else{e.target.checked=false;return;}}
+      else selectedCounties.delete(county);
+      onCountyChange();
+    });
+    frag.appendChild(item);
+  });
+  el.innerHTML='';
+  el.appendChild(frag);
+  document.getElementById('county-hint').textContent=selectedCounties.size>=3?'已達上限（3 個縣市）':'';
+}
+
+function toggleCountyPanel(){
+  document.getElementById('county-btn').classList.toggle('open');
+  document.getElementById('county-panel').classList.toggle('open');
+}
+function clearCounties(){selectedCounties.clear();onCountyChange();}
+
+function onCountyChange(){
+  renderCountyList();
+  const badge=document.getElementById('county-badge'),label=document.getElementById('county-btn-label');
+  if(selectedCounties.size===0){label.textContent='全部縣市';badge.style.display='none';}
+  else{label.textContent='篩選縣市';badge.textContent=selectedCounties.size;badge.style.display='';}
+  renderFilterChips();
+  updateRanking(currentPts,document.getElementById('period-sel').value);
+}
+
+function renderFilterChips(){
+  const wrap=document.getElementById('filter-chips');
+  if(selectedCounties.size===0){wrap.style.display='none';wrap.innerHTML='';return;}
+  wrap.style.display='flex';
+  const frag=document.createDocumentFragment();
+  [...selectedCounties].forEach(c=>{
+    const chip=document.createElement('div');chip.className='filter-chip';
+    chip.innerHTML=`${c} <span class="filter-chip-x">✕</span>`;
+    chip.addEventListener('click',()=>{selectedCounties.delete(c);onCountyChange();});
+    frag.appendChild(chip);
+  });
+  wrap.innerHTML='';wrap.appendChild(frag);
+}
+
+document.addEventListener('click',e=>{
+  const btn=document.getElementById('county-btn'),panel=document.getElementById('county-panel');
+  if(!btn.contains(e.target)&&!panel.contains(e.target)){
+    btn.classList.remove('open');panel.classList.remove('open');
+  }
+});
+
+function onSearchChange(){
+  searchText=document.getElementById('rank-search').value.trim();
+  updateRanking(currentPts,document.getElementById('period-sel').value);
+}
+
+function getFilteredPts(pts){
+  let f=pts;
+  if(selectedCounties.size>0)f=f.filter(s=>selectedCounties.has(s.county));
+  if(searchText){
+    const q=searchText.toLowerCase();
+    f=f.filter(s=>s.name.toLowerCase().includes(q)||(s.county&&s.county.toLowerCase().includes(q))||(s.town&&s.town.toLowerCase().includes(q)));
+  }
+  return f;
+}
+
+let sortAsc=false;
+
+function toggleSort(){
+  sortAsc=!sortAsc;
+  document.getElementById('sort-label').textContent=sortAsc?'↑ 由小到大':'↓ 由大到小';
+  document.getElementById('sort-header').style.background=sortAsc?'#f0f8ff':'';
+  if(currentPts.length)updateRanking(currentPts,document.getElementById('period-sel').value);
+}
+
+function updateRanking(pts,period){
+  currentPts=pts;
+  const sorted=[...getFilteredPts(pts)].sort((a,b)=>sortAsc?a.v-b.v:b.v-a.v);
+  document.getElementById('rank-count-tag').textContent=sorted.length?`共 ${sorted.length} 站`:'';
+  const vp=document.getElementById('rank-viewport');
+  const spacer=document.getElementById('rank-spacer');
+  if(!sorted.length){
+    spacer.style.height='0';
+    vp.innerHTML='<div class="rank-empty" style="padding:12px 0;text-align:center;font-size:12px;color:#aabbcc">無符合條件的測站</div>';
+    vsData=[];return;
+  }
+  vsInit(sorted,period);
+}
+
+/* ══ 資料解析 ══ */
+let stationData=[],obsTimeStr='—';
+let obsData={};
+
+function parseObsJSON(json){
+  const stations=json?.records?.Station||json?.result?.records?.Station||json?.Station||null;
+  if(!stations||!stations.length)return false;
+  obsData={};
+  stations.forEach(s=>{
+    const we=s.WeatherElement||{},geo=s.GeoInfo||{};
+    const alt=parseFloat(geo.StationAltitude);
+    obsData[s.StationName]={
+      id:s.StationId,county:geo.CountyName||'',town:geo.TownName||'',
+      alt:isNaN(alt)?null:alt,
+      time:(s.ObsTime?.DateTime||'').replace('T',' ').replace('+08:00',''),
+      weather:we.Weather||'',windDir:parseFloat(we.WindDirection),windSpeed:parseFloat(we.WindSpeed),
+      temp:parseFloat(we.AirTemperature),rh:parseFloat(we.RelativeHumidity),
+      pressure:parseFloat(we.AirPressure),gust:parseFloat(we.GustInfo?.PeakGustSpeed),
+      precip:parseFloat(we.Now?.Precipitation),
+      dailyHigh:parseFloat(we.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature),
+      dailyLow:parseFloat(we.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature),
+    };
+  });
+  return Object.keys(obsData).length>0;
+}
+
+function parseRainfallJSON(json){
+  const stations=json?.records?.Station||json?.result?.records?.Station||json?.Station||null;
+  if(!stations||!stations.length)return false;
+  if(stations[0]?.ObsTime?.DateTime)
+    obsTimeStr=stations[0].ObsTime.DateTime.replace('T',' ').replace('+08:00','');
+  stationData=[];
+  stations.forEach(s=>{
+    const geo=s.GeoInfo||{};
+    const coords=geo.Coordinates||[];
+    const wgs=coords.find(c=>c.CoordinateName==='WGS84')||coords[0]||{};
+    const lat=parseFloat(wgs.StationLatitude),lon=parseFloat(wgs.StationLongitude);
+    if(isNaN(lat)||isNaN(lon))return;
+    const re=s.RainfallElement||{};
+    const get=k=>{const v=re[k]?.Precipitation,n=parseFloat(v);return isNaN(n)?null:n;};
+    stationData.push({
+      id:s.StationId,name:s.StationName,lat,lon,
+      county:geo.CountyName||'',town:geo.TownName||'',
+      rainfall:{Now:get('Now'),Past10Min:get('Past10Min'),Past1hr:get('Past1hr'),
+        Past3hr:get('Past3hr'),Past6Hr:get('Past6Hr'),Past12hr:get('Past12hr'),
+        Past24hr:get('Past24hr'),Past2days:get('Past2days'),Past3days:get('Past3days')}
+    });
+  });
+  if(stationData.length>0)buildCountyList(stationData);
+  return stationData.length>0;
+}
+
+/* ══ 氣象面板 ══ */
+function windDirArrow(deg){if(isNaN(deg)||deg<0)return'';return['↓','↙','←','↖','↑','↗','→','↘'][Math.round(deg/45)%8];}
+function windDirLabel(deg){if(isNaN(deg)||deg<0)return'—';return['北','東北','東','東南','南','西南','西','西北'][Math.round(deg/45)%8]+'風 '+deg.toFixed(0)+'°';}
+
+function openWxPanel(stationName,rainfallVal,rainfallLabel){
+  const panel=document.getElementById('wx-panel'),body=document.getElementById('wx-body');
+  const wx=obsData[stationName];
+  document.getElementById('wx-name').textContent=stationName;
+  if(!wx){
+    document.getElementById('wx-id').textContent='';
+    document.getElementById('wx-loc').textContent='（無氣象觀測資料）';
+    document.getElementById('wx-alt').textContent='';
+    body.innerHTML='<div class="wx-no-data">此站無對應氣象觀測資料</div>';
+    panel.classList.add('visible');return;
+  }
+  const loc=[wx.county,wx.town].filter(Boolean).join(' ');
+  document.getElementById('wx-id').textContent=wx.id?'('+wx.id+')':'';
+  document.getElementById('wx-loc').textContent=loc||'—';
+  document.getElementById('wx-alt').textContent=wx.alt!=null?'海拔 '+wx.alt+' m':'';
+  const v=n=>isNaN(n)||n<-90?'—':n;
+  const wIcon=wx.weather&&wx.weather!=='-99'?({'晴':'☀️','多雲':'⛅','陰':'☁️','雨':'🌧','霧':'🌫'}[wx.weather]||'🌡'):'';
+  const rainInline=rainfallVal!=null?`<span class="wx-rain-inline">🌧 ${rainfallVal.toFixed(1)} mm</span>`:'';
+  const windSpd=isNaN(wx.windSpeed)||wx.windSpeed<0?'—':wx.windSpeed.toFixed(1);
+  const gust=isNaN(wx.gust)||wx.gust<0?'—':wx.gust.toFixed(1);
+  const pres=isNaN(wx.pressure)||wx.pressure<0?'—':wx.pressure.toFixed(1);
+  body.innerHTML=`
+    ${wx.weather&&wx.weather!=='-99'?`<div class="wx-weather-badge">${wIcon} ${wx.weather}</div>`:''}
+    <div class="wx-grid">
+      <div class="wx-cell warm">
+        <span class="wx-cell-label">氣溫</span>
+        <span><span class="wx-cell-val">${v(wx.temp)}</span><span class="wx-cell-unit"> °C</span></span>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">相對溼度</span>
+        <span><span class="wx-cell-val">${v(wx.rh)}</span><span class="wx-cell-unit"> %</span></span>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">氣壓</span>
+        <span><span class="wx-cell-val">${pres}</span><span class="wx-cell-unit"> hPa</span></span>
+      </div>
+      <div class="wx-cell highlight">
+        <span class="wx-cell-label">風速</span>
+        <span><span class="wx-wind-arrow">${windDirArrow(wx.windDir)}</span><span class="wx-cell-val">${windSpd}</span><span class="wx-cell-unit"> m/s</span></span>
+        <div class="wx-wind-sub">${windDirLabel(wx.windDir)}</div>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">最大陣風</span>
+        <span><span class="wx-cell-val">${gust}</span><span class="wx-cell-unit"> m/s</span></span>
+      </div>
+      <div class="wx-cell">
+        <span class="wx-cell-label">今日高／低</span>
+        <span style="font-size:12px;font-weight:700;color:#cc4400">${isNaN(wx.dailyHigh)?'—':wx.dailyHigh+'°'}</span>
+        <span style="font-size:10px;color:#1a6acc">${isNaN(wx.dailyLow)?'—':wx.dailyLow+'°'}</span>
+      </div>
+    </div>
+    <div class="wx-foot-row">
+      ${rainInline}
+      <div style="flex:1"></div>
+      <div style="font-size:9px;color:#aab0c0">${wx.time||'—'}</div>
+    </div>`;
+  panel.classList.add('visible');
+}
+function closeWxPanel(){document.getElementById('wx-panel').classList.remove('visible');}
+
+/* ══════════════════════════════════════════
+   Web Worker — IDW 插值（不鎖 UI thread）
+══════════════════════════════════════════ */
+const WORKER_SRC=`
+self.onmessage=function(e){
+  var d=e.data,pts=d.pts,W=d.W,H=d.H,b=d.bounds,method=d.method,p=d.p,scale=d.scale;
+  var minLat=b.minLat,maxLat=b.maxLat,minLon=b.minLon,maxLon=b.maxLon;
+  var buf=new Uint8ClampedArray(W*H*4);
+  function getColor(v){for(var i=0;i<scale.length;i++)if(v<scale[i].hi)return scale[i].rgb;return scale[scale.length-1].rgb;}
+  for(var py=0;py<H;py++){
+    var lat=maxLat-(py/H)*(maxLat-minLat);
+    for(var px=0;px<W;px++){
+      var lon=minLon+(px/W)*(maxLon-minLon);
+      var v;
+      if(method==='nearest'){
+        var best=pts[0],bd=1e18;
+        for(var k=0;k<pts.length;k++){var dd=(lon-pts[k].lon)*(lon-pts[k].lon)+(lat-pts[k].lat)*(lat-pts[k].lat);if(dd<bd){bd=dd;best=pts[k];}}
+        v=best.v;
+      }else{
+        var n=0,wd=0;
+        for(var k=0;k<pts.length;k++){
+          var dx=lon-pts[k].lon,dy=lat-pts[k].lat,d2=dx*dx+dy*dy;
+          if(d2<1e-14){n=pts[k].v*1e14;wd=1e14;break;}
+          var w=1/Math.pow(d2,p/2);n+=w*pts[k].v;wd+=w;
+        }
+        v=wd?n/wd:0;
+      }
+      var rgb=getColor(v);
+      var a=v<0.05?20:Math.min(220,65+v*1.8);
+      var idx=(py*W+px)*4;
+      buf[idx]=rgb[0];buf[idx+1]=rgb[1];buf[idx+2]=rgb[2];buf[idx+3]=Math.round(a);
+    }
+  }
+  self.postMessage({buf:buf},[ buf.buffer ]);
+};`;
+
+const workerBlob=new Blob([WORKER_SRC],{type:'text/javascript'});
+const workerURL=URL.createObjectURL(workerBlob);
+let activeWorker=null;
+
+/* ══ 繪製 ══ */
+function renderMap(){
+  const period=document.getElementById('period-sel').value;
+  const method=document.getElementById('interp-sel').value;
+  const selLabel=document.getElementById('period-sel').selectedOptions[0].text;
+  if(!stationData.length){setStatus('⚠ 請先載入 JSON 資料');return;}
+  const pts=stationData.map(s=>{const v=s.rainfall[period];return{...s,v:v??null};}).filter(s=>s.v!==null);
+  if(!pts.length){setStatus('⚠ 此時段無有效資料');return;}
+
+  /* 立刻更新排名（不等 Worker）*/
+  updateRanking(pts,period);
+  const timeRange=calcTimeRange(obsTimeStr,period);
+  document.getElementById('mti-period').textContent=PERIOD_INFO[period].label;
+  document.getElementById('mti-range').textContent=timeRange;
+  document.getElementById('map-time-info').style.display='flex';
+  const tdi=document.getElementById('toolbar-data-info');
+  tdi.style.display='';
+  tdi.innerHTML='資料時間：'+obsTimeStr+'　有效站數：'+pts.length+' 站';
+  const maxV=Math.max(...pts.map(s=>s.v));
+  setStatus('⏳ 插值計算中… '+pts.length+' 站・'+PERIOD_INFO[period].label+'・最大 '+maxV.toFixed(1)+' mm');
+
+  /* 先畫測站圓點 */
+  if(stationLyr){stationLyr.eachLayer(l=>{if(l.isTooltipOpen&&l.isTooltipOpen())l.closeTooltip();});map.removeLayer(stationLyr);}
+  stationLyr=L.layerGroup();
+  pts.forEach(s=>{
+    const m=L.circleMarker([s.lat,s.lon],{radius:s.v===0?2.5:5,color:'rgba(0,0,0,0.25)',weight:0.5,fillColor:getColor(s.v),fillOpacity:1,zIndexOffset:1000});
+    const loc=[s.county,s.town].filter(Boolean).join(' ');
+    m.bindTooltip(
+      `<div class="tt-name">${s.name}</div><div class="tt-loc">${loc}</div><div class="tt-val">${s.v.toFixed(1)} mm</div><div class="tt-info">${selLabel}・點擊查看氣象</div>`,
+      {permanent:false,direction:'top',offset:[0,-8],sticky:false}
+    );
+    m.on('mouseover',function(){this.openTooltip();});
+    m.on('mouseout',function(){this.closeTooltip();});
+    m.on('click',()=>openWxPanel(s.name,s.v,selLabel));
+    stationLyr.addLayer(m);
+  });
+  stationLyr.addTo(map);
+
+  /* 取消上一個 Worker */
+  if(activeWorker){activeWorker.terminate();activeWorker=null;}
+
+  const scaleForWorker=SCALE.map(s=>{
+    const r=parseInt(s.color.slice(1,3),16),g=parseInt(s.color.slice(3,5),16),b=parseInt(s.color.slice(5,7),16);
+    return{hi:s.hi,rgb:[r,g,b]};
+  });
+  const W=600,H=560,pExp=method==='idw3'?3:2;
+
+  activeWorker=new Worker(workerURL);
+  activeWorker.postMessage({pts,W,H,bounds:MAP_BOUNDS,method,p:pExp,scale:scaleForWorker});
+  activeWorker.onmessage=function(e){
+    activeWorker=null;
+    const buf=e.data.buf;
+    const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+    const ctx=canvas.getContext('2d');
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(buf),W,H),0,0);
+    applyMaskAndOverlay(canvas,W,H);
+    setStatus('✔ 已繪製 '+pts.length+' 站・'+PERIOD_INFO[period].label+'（'+timeRange+'）・全臺最大 '+maxV.toFixed(1)+' mm');
+  };
+  activeWorker.onerror=function(err){activeWorker=null;setStatus('⚠ 插值計算失敗：'+err.message);};
+}
+
+function applyMaskAndOverlay(canvas,W,H){
+  const {minLat,maxLat,minLon,maxLon}=MAP_BOUNDS;
+  function latLonToXY(lat,lon){return[(lon-minLon)/(maxLon-minLon)*W,(maxLat-lat)/(maxLat-minLat)*H];}
+  if(landGeoJSON){
+    const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
+    const tc=tmp.getContext('2d');
+    function drawRing(ring){ring.forEach(([lon,lat],i)=>{const[x,y]=latLonToXY(lat,lon);i===0?tc.moveTo(x,y):tc.lineTo(x,y);});tc.closePath();}
+    tc.beginPath();
+    const feats=landGeoJSON.features||[{type:'Feature',geometry:landGeoJSON}];
+    feats.forEach(f=>{const g=f.geometry||f;if(!g)return;const polys=g.type==='MultiPolygon'?g.coordinates:g.type==='Polygon'?[g.coordinates]:[];polys.forEach(poly=>poly.forEach(ring=>drawRing(ring)));});
+    tc.fillStyle='#000';tc.fill('evenodd');
+    const masked=document.createElement('canvas');masked.width=W;masked.height=H;
+    const mc=masked.getContext('2d');
+    mc.drawImage(canvas,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(tmp,0,0);
+    if(overlayLyr)map.removeLayer(overlayLyr);
+    overlayLyr=L.imageOverlay(masked.toDataURL(),[[minLat,minLon],[maxLat,maxLon]],{opacity:currentOpacity,zIndex:200}).addTo(map);
+  }else{
+    if(overlayLyr)map.removeLayer(overlayLyr);
+    overlayLyr=L.imageOverlay(canvas.toDataURL(),[[minLat,minLon],[maxLat,maxLon]],{opacity:currentOpacity,zIndex:200}).addTo(map);
+  }
+}
+
+/* ══ 自動載入 ══ */
+async function loadDefaultFiles(){
+  let rainfallOk=false;
+  try{
+    const res=await fetch(`${API_BASE}/O-A0002-001_Rainfall.json?_=`+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseRainfallJSON(await res.json())){
+      document.getElementById('file-name').textContent=API_BASE+'（'+stationData.length+'站）';
+      rainfallOk=true;
+    }
+  }catch(e){
+    document.getElementById('file-name').textContent='⚠ 自動載入失敗';
+    setStatus('⚠ 無法自動載入（'+e.message+'）');
+  }
+  try{
+    const res=await fetch('twcounty2010.3.json?_='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    landGeoJSON=await res.json();
+    if(adminLyr)map.removeLayer(adminLyr);
+    adminLyr=L.geoJSON(landGeoJSON,{style:{color:'#334466',weight:1.2,fillOpacity:0,dashArray:'5,3'}}).addTo(map);
+    document.getElementById('geojson-name').textContent='twcounty2010.3.json';
+  }catch(e){document.getElementById('geojson-name').textContent='⚠ 自動載入失敗';}
+  try{
+    const res=await fetch(`${API_BASE}/O-A0001-001_Observation.json?_=`+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseObsJSON(await res.json()))
+      document.getElementById('obs-name').textContent='Observation.json（'+Object.keys(obsData).length+'站）';
+  }catch(e){document.getElementById('obs-name').textContent='⚠ 自動載入失敗';}
+  if(rainfallOk)renderMap();
+}
+
+/* ══ 更新資料 ══ */
+async function refreshData(){
+  const btn=document.getElementById('refresh-btn');
+  const prevPeriod=document.getElementById('period-sel').value;
+  btn.classList.add('loading');btn.innerHTML='<span class="spin">⟳</span> 更新中…';
+  setStatus('正在重新載入雨量資料…');
+  try{
+    const res=await fetch(`${API_BASE}/O-A0002-001_Rainfall.json?_=`+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    if(parseRainfallJSON(await res.json())){
+      document.getElementById('file-name').textContent=API_BASE+'（'+stationData.length+'站）';
+      document.getElementById('period-sel').value=prevPeriod;
+      renderMap();
+    }
+  }catch(e){setStatus('⚠ 更新失敗：'+e.message);}
+  try{
+    const res=await fetch(`${API_BASE}/O-A0001-001_Observation.json?_=`+Date.now());
+    if(res.ok&&parseObsJSON(await res.json()))
+      document.getElementById('obs-name').textContent='Observation.json（'+Object.keys(obsData).length+'站）';
+  }catch(e){}
+  btn.classList.remove('loading');btn.innerHTML='⟳ 更新資料';
+}
+
+/* ══ 手動上傳 ══ */
+document.getElementById('file-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{try{if(!parseRainfallJSON(JSON.parse(ev.target.result))){setStatus('⚠ 無法解析 JSON');return;}document.getElementById('file-name').textContent=f.name+'（'+stationData.length+'站）';setStatus('✔ 已載入 '+f.name+'，共 '+stationData.length+' 站');renderMap();}catch(err){setStatus('✘ JSON 解析失敗：'+err.message);}};
+  r.readAsText(f,'utf-8');
+});
+document.getElementById('geojson-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{try{landGeoJSON=JSON.parse(ev.target.result);if(adminLyr)map.removeLayer(adminLyr);adminLyr=L.geoJSON(landGeoJSON,{style:{color:'#334466',weight:1.2,fillOpacity:0,dashArray:'5,3'}}).addTo(map);document.getElementById('geojson-name').textContent=f.name;setStatus('✔ 行政區界已載入：'+f.name);}catch(err){setStatus('✘ GeoJSON 解析失敗：'+err.message);}};
+  r.readAsText(f,'utf-8');
+});
+document.getElementById('obs-input').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{try{if(!parseObsJSON(JSON.parse(ev.target.result))){setStatus('⚠ 無法解析氣象觀測 JSON');return;}document.getElementById('obs-name').textContent=f.name+'（'+Object.keys(obsData).length+'站）';setStatus('✔ 氣象觀測已載入：'+f.name+'，共 '+Object.keys(obsData).length+' 站');}catch(err){setStatus('✘ 氣象 JSON 解析失敗：'+err.message);}};
+  r.readAsText(f,'utf-8');
+});
+
+document.getElementById('period-sel').addEventListener('change',()=>{if(stationData.length)renderMap();});
+document.getElementById('interp-sel').addEventListener('change',()=>{if(stationData.length)renderMap();});
+function setStatus(m){document.getElementById('status').textContent=m;}
+
+setInterval(refreshData,30*60*1000);
+buildLegend();
+loadDefaultFiles();
+</script>
+</body>
+</html>
